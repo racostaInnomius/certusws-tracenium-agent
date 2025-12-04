@@ -1,0 +1,67 @@
+appId: com.tracenium.agent
+productName: Tracenium Agent
+
+files:
+  - "*.js"
+  - "build/**"
+  - "package.json"
+  - "node_modules/**"
+  - "!node_modules/electron/**"
+
+extraResources:
+  - from: ".env"
+    to: ".env"
+
+extraMetadata:
+  main: "main.js"
+
+# --------------------------------------------------------------------
+# 🪟 WINDOWS — MSI
+# electron-builder ya NO soporta preUninstall/postUninstall
+# pero podemos empaquetar el script para que el usuario lo ejecute.
+# --------------------------------------------------------------------
+win:
+  target:
+    - msi
+  icon: build/icon.ico
+  artifactName: "tracenium-agent-setup-${version}.msi"
+  extraResources:
+    - from: "build/uninstall-windows.ps1"
+      to: "uninstall-windows.ps1"
+
+# --------------------------------------------------------------------
+# 🍎 MACOS — PKG
+# macOS ya no soporta "scripts.uninstall" en electron-builder.
+# Debemos incluir el script en extraResources.
+# --------------------------------------------------------------------
+mac:
+  target:
+    - pkg
+  icon: build/icon.icns
+  artifactName: "tracenium-agent-${version}.pkg"
+  hardenedRuntime: false
+  extraResources:
+    - from: "build/uninstall-macos.sh"
+      to: "uninstall-macos.sh"
+
+# --------------------------------------------------------------------
+# 🐧 LINUX — DEB / RPM
+# afterRemove fue removido del schema.
+# Se incluye como script externo via extraResources
+# y el usuario puede ejecutarlo manualmente.
+# --------------------------------------------------------------------
+linux:
+  target:
+    - deb
+    - rpm
+  category: Utility
+  artifactName: "tracenium-agent-${version}-${arch}"
+  extraResources:
+    - from: "build/uninstall-linux.sh"
+      to: "uninstall-linux.sh"
+
+publish:
+  provider: github
+  owner: racostaInnomius
+  repo: certusws-tracenium-agent
+  releaseType: draft

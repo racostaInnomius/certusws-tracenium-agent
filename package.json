@@ -1,0 +1,23 @@
+{
+  "name": "certusws-tracenium-agent",
+  "version": "1.0.0",
+  "description": "Tracenium Agent - Hardware & Software inventory collector",
+  "license": "MIT",
+  "author": "Certus",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --config electron-builder.yml"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "electron-updater": "^6.6.2",
+    "node-wmi": "^0.0.5",
+    "systeminformation": "^5.27.11"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}
