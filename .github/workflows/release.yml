@@ -6,6 +6,9 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build on ${{ matrix.os }}
@@ -24,6 +27,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Create .env file
+        run: |
+          echo "SERVER_BASE_URL=http://192.168.68.104:3000" > .env
+          echo "AGENT_ID=auto" >> .env
 
       - name: Install Dependencies
         run: npm install

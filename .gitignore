@@ -1,7 +1,6 @@
 dist/
 out/
 release/
-build/
 node_modules/
 *.exe
 *.pkg
