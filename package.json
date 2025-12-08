@@ -3,7 +3,10 @@
   "version": "1.0.2",
   "description": "Tracenium Agent - Hardware & Software inventory collector",
   "license": "MIT",
-  "author": "Certus",
+  "author": {
+    "name": "Certus",
+    "email": "support@certusitm.com"
+  },
   "type": "commonjs",
   "main": "main.js",
   "scripts": {
