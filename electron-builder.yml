@@ -1,51 +1,47 @@
 appId: com.tracenium.agent
 productName: Tracenium Agent
 
-files:
-  - "*.js"
-  - "build/**"
-  - ".env"
-  - "package.json"
-  - "!node_modules/electron/**"
+asar: true
 
 extraMetadata:
   main: "main.js"
+
+files:
+  - "*.js"
+  - "build/**"
+  - "package.json"
+  - "!node_modules/electron/**"
 
 extraResources:
   - from: ".env"
     to: ".env"
 
-# -------------------------
-# WINDOWS
-# -------------------------
-win:
-  target:
-    - msi
-  icon: build/icon.ico
-  artifactName: "tracenium-agent-setup-${version}.msi"
-
-# -------------------------
-# MACOS
-# -------------------------
-mac:
-  target:
-    - pkg
-    - zip     # requerido para autoUpdater
-  icon: build/icon.icns
-  artifactName: "tracenium-agent-${version}-${arch}.${ext}"
-
-# -------------------------
-# LINUX
-# -------------------------
-linux:
-  target:
-    - deb
-    - rpm
-  icon: build/icon.png    # <- PNG 256x256 mínimo
-  category: Utility
-  artifactName: "tracenium-agent-${version}-${arch}.${ext}"
-
 publish:
   provider: github
   owner: racostaInnomius
   repo: certusws-tracenium-agent
+  releaseType: draft
+
+win:
+  target:
+    - msi
+    - zip
+  icon: build/icon.ico
+  artifactName: "tracenium-agent-${version}.msi"
+
+mac:
+  target:
+    - pkg
+    - zip
+  icon: build/icon.icns
+  artifactName: "tracenium-agent-${version}-${arch}.pkg"
+  category: public.app-category.utilities
+
+linux:
+  target:
+    - deb
+    - rpm
+    - zip
+  icon: build/icon.png   # PNG 256x256
+  category: Utility
+  artifactName: "tracenium-agent-${version}-${arch}"
