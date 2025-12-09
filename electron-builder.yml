@@ -22,26 +22,44 @@ publish:
   repo: certusws-tracenium-agent
   releaseType: draft
 
+# ----------------------
+# WINDOWS
+# ----------------------
 win:
   target:
     - msi
     - zip
   icon: build/icon.ico
-  artifactName: "tracenium-agent-${version}.msi"
+  artifactName: "tracenium-agent-${version}-win.${ext}"
+  publish:
+    provider: github
+    channel: latest
 
+# ----------------------
+# MAC
+# ----------------------
 mac:
   target:
     - pkg
     - zip
   icon: build/icon.icns
-  artifactName: "tracenium-agent-${version}-${arch}.pkg"
+  artifactName: "tracenium-agent-${version}-${arch}-mac.${ext}"
   category: public.app-category.utilities
+  publish:
+    provider: github
+    channel: latest
 
+# ----------------------
+# LINUX
+# ----------------------
 linux:
   target:
     - deb
     - rpm
     - zip
-  icon: build/icon.png   # PNG 256x256
+  icon: build/icon.png
   category: Utility
-  artifactName: "tracenium-agent-${version}-${arch}"
+  artifactName: "tracenium-agent-${version}-${arch}-linux.${ext}"
+  publish:
+    provider: github
+    channel: latest
