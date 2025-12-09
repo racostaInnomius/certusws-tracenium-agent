@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -12,61 +12,79 @@ permissions:
 jobs:
   build:
     name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
       - name: Create .env file
         run: |
           echo "SERVER_BASE_URL=http://192.168.68.104:3000" > .env
           echo "AGENT_ID=auto" >> .env
 
-      - name: Clean node_modules on Windows
+      # --------------------------
+      # WINDOWS FIXES
+      # --------------------------
+      - name: Clean npm cache (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm cache clean --force
+
+      - name: Clean node_modules (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
+          if (Test-Path node_modules) {
+            Remove-Item -Recurse -Force node_modules
+          }
 
-      - name: Install Dependencies
+      # --------------------------
+      # INSTALL DEPENDENCIES
+      # --------------------------
+      - name: Install dependencies
         run: npm install
 
-      # Linux deps needed for .deb and .rpm
+      # --------------------------
+      # LINUX BUILD DEPS
+      # --------------------------
       - name: Install Linux build deps
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y rpm fakeroot dpkg
 
-      # Build the app per OS
+      # --------------------------
+      # BUILD APP
+      # --------------------------
       - name: Build App
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: npm run build
 
-      # Upload artifacts from this OS build
+      # --------------------------
+      # PUBLISH TO GITHUB RELEASES
+      # SOLO LINUX PUBLICA
+      # --------------------------
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')
         with:
           draft: false
           files: |
             dist/*.msi
-            dist/*.exe
             dist/*.pkg
-            dist/*.zip
             dist/*.deb
             dist/*.rpm
+            dist/*.zip
             dist/*latest*.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
