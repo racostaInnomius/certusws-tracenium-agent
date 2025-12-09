@@ -37,8 +37,9 @@ win:
 mac:
   target:
     - pkg
+    - zip
   icon: build/icon.icns
-  artifactName: "tracenium-agent-${version}.pkg"
+  artifactName: "tracenium-agent-${version}-${arch}.${ext}"
   hardenedRuntime: false
   extraResources:
     - from: "build/uninstall-macos.sh"

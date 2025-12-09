@@ -12,71 +12,59 @@ permissions:
 jobs:
   build:
     name: Build on ${{ matrix.os }}
-    timeout-minutes: 60
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
 
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
 
     steps:
-
-      # 1. Checkout
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Node
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 3. Environment file
       - name: Create .env file
         run: |
           echo "SERVER_BASE_URL=http://192.168.68.104:3000" > .env
           echo "AGENT_ID=auto" >> .env
 
-      # 4. Clean workspace **RELIABLE**
-      - name: Clean workspace before install
-        run: |
-          rm -rf node_modules
-          rm -f package-lock.json
-
-      # 5. Windows: handle locked folders
-      - name: Windows — deep clean (fix EPERM errors)
+      - name: Clean node_modules on Windows
         if: matrix.os == 'windows-latest'
-        shell: pwsh
         run: |
-          if (Test-Path node_modules) { Remove-Item node_modules -Recurse -Force -ErrorAction SilentlyContinue }
-          if (Test-Path package-lock.json) { Remove-Item package-lock.json -Force }
+          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
 
-      # 6. Install Dependencies
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
-      # 7. Linux: build deps
+      # Linux deps needed for .deb and .rpm
       - name: Install Linux build deps
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y rpm fakeroot dpkg
 
-      # 8. Build Electron App
+      # Build the app per OS
       - name: Build App
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: npm run build
 
-      # 9. Upload Release
+      # Upload artifacts from this OS build
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          draft: true
+          draft: false
           files: |
             dist/*.msi
+            dist/*.exe
             dist/*.pkg
+            dist/*.zip
             dist/*.deb
             dist/*.rpm
             dist/*latest*.yml
