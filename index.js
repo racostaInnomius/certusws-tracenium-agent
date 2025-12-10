@@ -268,3 +268,5 @@ main().catch((err) => {
   console.error('Error inesperado en index.js:', err.message);
   process.exit(1);
 });
+
+module.exports = { runInventory: main };
