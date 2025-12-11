@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: '20'
 
-      # WINDOWS ONLY
+      # WINDOWS
       - name: Create .env file (Windows)
         if: matrix.os == 'windows-latest'
         run: |
@@ -45,8 +45,7 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      # Linux-only dependencies
-      - name: Install Linux build deps
+      - name: Install Linux deps
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
@@ -63,11 +62,13 @@ jobs:
         with:
           draft: true
           files: |
-            dist/*.msi
+            dist/*.exe
+            dist/*.dmg
             dist/*.pkg
             dist/*.deb
             dist/*.rpm
             dist/*.zip
             dist/*latest*.yml
+            dist/*.blockmap
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
