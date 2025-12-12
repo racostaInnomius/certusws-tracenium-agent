@@ -4,6 +4,8 @@ const { exec } = require('child_process');     // Para ejecutar comandos del SO
 const os = require('os');                      // Para detectar plataforma
 const fs = require('fs');                      // Para escribir el JSON
 const { uploadSystemInfo } = require('./upload-system-info'); // Nuestro uploader
+const { app } = require("electron");
+const path = require("path");
 
 // Parámetros para systeminformation
 const par = {
@@ -253,7 +255,8 @@ async function main() {
 
   // 3) Guardar en JSON local
   console.log('💾 Guardando system-info.json localmente ... '+ new Date());
-  fs.writeFileSync('system-info.json', JSON.stringify(systemInfo, null, 2));
+  const outputFile = path.join(app.getPath("userData"), "system-info.json");
+  fs.writeFileSync(outputFile, JSON.stringify(systemInfo, null, 2));
   console.log('✅ System information saved to system-info.json ... '+ new Date());
 
   // 4) Enviar al servidor usando el objeto en memoria (no leemos el archivo)
