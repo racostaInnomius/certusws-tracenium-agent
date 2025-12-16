@@ -1,46 +1,74 @@
 // upload-system-info.js
-// 1) Puede subir un objeto de sistema directamente (uploadSystemInfo)
-// 2) O leer system-info.json y subirlo (uploadSystemInfoFromFile)
-// 3) Maneja reintentos si no hay internet
-require('dotenv').config(); 
+// - Sube el inventario al servidor (PUT)
+// - Soporta ejecución en Electron empaquetado
+// - Maneja reintentos si no hay conectividad
 
-const fs = require('fs/promises');
-const { constants } = require('fs');
-const dns = require('dns/promises');
-const os = require('os');
+const path = require("path");
+const os = require("os");
+const fs = require("fs/promises");
+const { constants } = require("fs");
+const dns = require("dns/promises");
+const dotenv = require("dotenv");
 
-// 🔧 CONFIGURACIÓN
-const DEFAULT_SYSTEM_INFO_PATH = './system-info.json';
+// Electron solo existe cuando estamos empaquetados
+let app;
+try {
+  ({ app } = require("electron"));
+} catch {
+  app = null;
+}
 
-// Usa el hostname como identificador del agente (se puede cambiar por un UUID)
-const SERVER_BASE_URL = process.env.SERVER_BASE_URL || 'http://localhost:3000';
-const AGENT_ID = process.env.AGENT_ID === 'auto' ? os.hostname() : process.env.AGENT_ID;
+// =======================
+// CARGA CORRECTA DEL .env
+// =======================
 
-// Propuesta de endpoint:
+const envPath =
+  app && app.isPackaged
+    ? path.join(process.resourcesPath, ".env") // Electron PROD
+    : path.join(process.cwd(), ".env");        // DEV / local
+
+dotenv.config({ path: envPath });
+
+// =======================
+// CONFIGURACIÓN
+// =======================
+
+const DEFAULT_SYSTEM_INFO_PATH = "./system-info.json";
+
+const SERVER_BASE_URL =
+  process.env.SERVER_BASE_URL || "http://localhost:3000";
+
+const AGENT_ID =
+  process.env.AGENT_ID === "auto"
+    ? os.hostname()
+    : process.env.AGENT_ID || os.hostname();
+
 const ENDPOINT_URL = `${SERVER_BASE_URL}/api/v1/agents/${encodeURIComponent(
   AGENT_ID
 )}/system-info`;
 
-// Reintentos si NO hay internet
+// Reintentos
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 30_000; // 30 segundos
 
-// ---------- Helpers ----------
+// =======================
+// HELPERS
+// =======================
 
 // ¿Existe el archivo?
-async function fileExists(path) {
+async function fileExists(filePath) {
   try {
-    await fs.access(path, constants.F_OK);
+    await fs.access(filePath, constants.F_OK);
     return true;
   } catch {
     return false;
   }
 }
 
-// ¿Tenemos conexión a internet? (prueba resolviendo google.com)
+// ¿Hay conectividad?
 async function hasInternet() {
   try {
-    await dns.resolve('google.com');
+    await dns.resolve("google.com");
     return true;
   } catch {
     return false;
@@ -48,113 +76,116 @@ async function hasInternet() {
 }
 
 // Lee y parsea system-info.json
-async function readSystemInfo(path) {
-  const raw = await fs.readFile(path, 'utf8');
+async function readSystemInfo(filePath) {
+  const raw = await fs.readFile(filePath, "utf8");
   return JSON.parse(raw);
 }
 
-// Envía el JSON al endpoint con PUT
+// Envía el JSON al backend
 async function sendToServer(data) {
-  // 👇 fetch nativo en Node 18+
   const response = await fetch(ENDPOINT_URL, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Content-Type': 'application/json'
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(data)
+    body: JSON.stringify(data),
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
+    const text = await response.text().catch(() => "");
     throw new Error(
-      `El servidor respondió con status ${response.status}: ${text}`
+      `Servidor respondió ${response.status}: ${text || "sin cuerpo"}`
     );
   }
 
   return response;
 }
 
-// Lógica con reintentos para conexión + envío
+// Lógica con reintentos
 async function uploadWithRetry(data, attempt = 1) {
-  console.log(`🔁 Intento ${attempt}/${MAX_RETRIES}`);
+  console.log(`🔁 Upload intento ${attempt}/${MAX_RETRIES}`);
+  console.log(`🌐 Endpoint: ${ENDPOINT_URL}`);
 
   const online = await hasInternet();
   if (!online) {
     if (attempt >= MAX_RETRIES) {
-      console.error('❌ Sin conexión a internet después de varios intentos.');
+      console.error("❌ Sin conexión después de varios intentos.");
       return;
     }
 
     console.warn(
-      `⚠️ No hay internet. Reintentando en ${RETRY_DELAY_MS / 1000} segundos...`
+      `⚠️ Sin internet. Reintentando en ${RETRY_DELAY_MS / 1000}s...`
     );
-
-    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
     return uploadWithRetry(data, attempt + 1);
   }
 
-  // Ya hay internet, intentamos enviar
   try {
     await sendToServer(data);
-    console.log('✅ Información enviada correctamente al servidor:', ENDPOINT_URL);
+    console.log("✅ Inventario enviado correctamente.");
   } catch (err) {
-    console.error('❌ Error al enviar la información:', err.message);
+    console.error("❌ Error enviando inventario:", err.message);
 
     if (attempt >= MAX_RETRIES) {
-      console.error('❌ Llegamos al máximo de reintentos al enviar.');
+      console.error("❌ Máximo de reintentos alcanzado.");
       return;
     }
 
     console.warn(
-      `⚠️ Reintentando envío en ${RETRY_DELAY_MS / 1000} segundos...`
+      `⚠️ Reintentando envío en ${RETRY_DELAY_MS / 1000}s...`
     );
-
-    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
     return uploadWithRetry(data, attempt + 1);
   }
 }
 
-// ---------- API PRINCIPAL ----------
+// =======================
+// API PRINCIPAL
+// =======================
 
-// 1) Versión recomendada para usar desde index.js: recibe el objeto en memoria
+// Usado desde index.js (recomendado)
 async function uploadSystemInfo(systemInfoObject) {
-  if (!systemInfoObject || typeof systemInfoObject !== 'object') {
-    throw new Error('systemInfoObject no es un objeto válido.');
+  if (!systemInfoObject || typeof systemInfoObject !== "object") {
+    throw new Error("systemInfoObject inválido.");
   }
 
-  console.log('📄 Objeto de system-info recibido en memoria.');
-  console.log(`🌐 Endpoint configurado: ${ENDPOINT_URL}`);
+  console.log("📦 Inventario recibido en memoria.");
+  console.log("📍 .env usado desde:", envPath);
+  console.log("🆔 AGENT_ID:", AGENT_ID);
 
   await uploadWithRetry(systemInfoObject);
 }
 
-// 2) Versión para leer el archivo desde disco (útil para pruebas manuales)
-async function uploadSystemInfoFromFile(path = DEFAULT_SYSTEM_INFO_PATH) {
-  const exists = await fileExists(path);
+// Para pruebas manuales
+async function uploadSystemInfoFromFile(
+  filePath = DEFAULT_SYSTEM_INFO_PATH
+) {
+  const exists = await fileExists(filePath);
   if (!exists) {
-    throw new Error(`No se encontró ${path}. Genera primero el archivo.`);
+    throw new Error(`No existe ${filePath}`);
   }
 
-  let systemInfo;
-  try {
-    systemInfo = await readSystemInfo(path);
-  } catch (err) {
-    throw new Error('Error leyendo/parsing system-info.json: ' + err.message);
-  }
+  const systemInfo = await readSystemInfo(filePath);
 
-  console.log(`📄 ${path} cargado correctamente.`);
-  console.log(`🌐 Endpoint configurado: ${ENDPOINT_URL}`);
+  console.log(`📄 ${filePath} cargado correctamente.`);
+  console.log("📍 .env usado desde:", envPath);
+  console.log("🆔 AGENT_ID:", AGENT_ID);
 
   await uploadWithRetry(systemInfo);
 }
 
-// Export para usar desde otros archivos (index.js)
-module.exports = { uploadSystemInfo, uploadSystemInfoFromFile };
+module.exports = {
+  uploadSystemInfo,
+  uploadSystemInfoFromFile,
+};
 
-// Si se ejecuta directamente: corre solo el upload leyendo el archivo
+// =======================
+// EJECUCIÓN DIRECTA (CLI)
+// =======================
+
 if (require.main === module) {
   uploadSystemInfoFromFile().catch((err) => {
-    console.error('Error inesperado en upload-system-info:', err.message);
+    console.error("❌ Error en upload-system-info:", err.message);
     process.exit(1);
   });
 }
