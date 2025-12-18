@@ -175,9 +175,9 @@ app.whenReady().then(() => {
     executeInventory();
   }, 5 * 60 * 1000);
 
-  // 3️⃣ Cron diario 10:30 PM
-  cron.schedule("30 22 * * *", () => {
-    writeLog("⏰ Running scheduled 10:30 PM inventory...");
+  // 3️⃣ Cron diario 1:30 PM
+  cron.schedule("30 13 * * *", () => {
+    writeLog("⏰ Running scheduled 1:30 PM inventory...");
     executeInventory();
   });
 
