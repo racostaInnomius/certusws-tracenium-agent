@@ -144,7 +144,7 @@ app.whenReady().then(() => {
     executeInventory();
   }, 5 * 60 * 1000);
 
-  cron.schedule("0 3 * * *", () => {
+  cron.schedule("0 21 * * *", () => {
     writeLog("⏰ Running scheduled 3AM inventory...");
     executeInventory();
   });
