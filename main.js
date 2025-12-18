@@ -145,9 +145,11 @@ app.whenReady().then(() => {
   }, 5 * 60 * 1000);
 
   cron.schedule("30 22 * * *", () => {
-    writeLog("⏰ Running scheduled 3AM inventory...");
+    writeLog("⏰ Running scheduled 10:30 PM inventory...");
     executeInventory();
   });
+  
+  writeLog("🕒 Cron registered successfully: 30 22 * * *");
 
   // 🔒 Mantiene el proceso vivo
   setInterval(() => {
