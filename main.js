@@ -144,10 +144,15 @@ app.whenReady().then(() => {
     executeInventory();
   }, 5 * 60 * 1000);
 
-  cron.schedule("0 21 * * *", () => {
+  cron.schedule("30 22 * * *", () => {
     writeLog("⏰ Running scheduled 3AM inventory...");
     executeInventory();
   });
+
+  // 🔒 Mantiene el proceso vivo
+  setInterval(() => {
+    writeLog("💓 Agent heartbeat");
+  }, 10 * 60 * 1000); // cada 10 min
 });
 
 app.on("window-all-closed", (e) => {
