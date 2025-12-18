@@ -4,7 +4,9 @@ const path = require("path");
 const fs = require("fs");
 const cron = require("node-cron");
 
-// Evita que arranque doble instancia
+// =======================
+// SINGLE INSTANCE
+// =======================
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
@@ -12,7 +14,7 @@ if (!app.requestSingleInstanceLock()) {
 app.disableHardwareAcceleration();
 
 // =======================
-// LOGGING PROFESIONAL
+// LOGGING
 // =======================
 
 const LOG_DIR = path.join(app.getPath("userData"), "logs");
@@ -27,17 +29,15 @@ function ensureLogDir() {
 
 function writeLog(line) {
   ensureLogDir();
-
-  const timestamp = new Date().toISOString();
-  const entry = `[${timestamp}] ${line}\n`;
+  const ts = new Date().toISOString();
+  const entry = `[${ts}] ${line}\n`;
 
   if (!fs.existsSync(LOG_FILE)) {
     fs.writeFileSync(LOG_FILE, entry);
     return;
   }
 
-  const content = fs.readFileSync(LOG_FILE, "utf8");
-  const lines = content.split("\n").filter(Boolean);
+  const lines = fs.readFileSync(LOG_FILE, "utf8").split("\n").filter(Boolean);
 
   if (lines.length > MAX_LINES) {
     fs.renameSync(LOG_FILE, LOG_FILE + ".1");
@@ -50,7 +50,7 @@ function writeLog(line) {
 writeLog("🔄 Agent starting...");
 
 // =======================
-// AGENTE DE INVENTARIO
+// INVENTORY
 // =======================
 
 let runInventory;
@@ -62,33 +62,65 @@ try {
 }
 
 // =======================
-// AUTO-UPDATE SILENCIOSO
+// AUTO UPDATE
 // =======================
+
+let updateCheckInProgress = false;
 
 function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  autoUpdater.on("checking-for-update", () => writeLog("Checking for update..."));
+  autoUpdater.on("checking-for-update", () =>
+    writeLog("🔍 Checking for update...")
+  );
+
   autoUpdater.on("update-available", (info) =>
-    writeLog(`Update available: ${info.version}`)
+    writeLog(`⬆️ Update available: ${info.version}`)
   );
+
   autoUpdater.on("update-not-available", () =>
-    writeLog("No updates available.")
+    writeLog("✔ No updates available.")
   );
+
   autoUpdater.on("error", (err) =>
-    writeLog("Auto-update error: " + err.message)
+    writeLog("❌ Auto-update error: " + err.message)
   );
+
   autoUpdater.on("update-downloaded", () => {
-    writeLog("Update downloaded. Installing...");
+    writeLog("📦 Update downloaded. Installing...");
     autoUpdater.quitAndInstall(false, true);
   });
 
-  autoUpdater.checkForUpdates();
+  checkForUpdatesSafely();
+
+  // 🔁 Polling cada 6 horas
+  setInterval(() => {
+    writeLog("⏳ Periodic update check (6h)...");
+    checkForUpdatesSafely();
+  }, 6 * 60 * 60 * 1000);
+}
+
+function checkForUpdatesSafely() {
+  if (updateCheckInProgress) {
+    writeLog("⚠ Update check skipped (already running)");
+    return;
+  }
+
+  updateCheckInProgress = true;
+
+  autoUpdater
+    .checkForUpdates()
+    .catch((err) =>
+      writeLog("❌ Update check failed: " + err.message)
+    )
+    .finally(() => {
+      updateCheckInProgress = false;
+    });
 }
 
 // =======================
-// VENTANA OCULTA
+// WINDOW (HIDDEN)
 // =======================
 
 let mainWindow;
@@ -99,19 +131,16 @@ function createWindow() {
     show: false,
   });
 
-  // Evita que alguien cierre la ventana (opc.)
-  mainWindow.on("close", (e) => {
-    e.preventDefault();
-  });
+  mainWindow.on("close", (e) => e.preventDefault());
 }
 
 // =======================
-// EJECUCIÓN DEL AGENTE
+// INVENTORY EXECUTION
 // =======================
 
 async function executeInventory() {
   if (!runInventory) {
-    writeLog("❌ runInventory is undefined — cannot execute inventory.");
+    writeLog("❌ runInventory undefined");
     return;
   }
 
@@ -125,7 +154,7 @@ async function executeInventory() {
 }
 
 // =======================
-// ARRANQUE DE LA APP
+// APP READY
 // =======================
 
 app.whenReady().then(() => {
@@ -137,26 +166,27 @@ app.whenReady().then(() => {
     setupAutoUpdater();
   }
 
+  // 1️⃣ Inmediato
   executeInventory();
 
+  // 2️⃣ 5 minutos después
   setTimeout(() => {
-    writeLog("⏱ Running first delayed inventory (5 min)...");
+    writeLog("⏱ Delayed inventory (5 min)");
     executeInventory();
   }, 5 * 60 * 1000);
 
+  // 3️⃣ Cron diario 10:30 PM
   cron.schedule("30 22 * * *", () => {
     writeLog("⏰ Running scheduled 10:30 PM inventory...");
     executeInventory();
   });
-  
-  writeLog("🕒 Cron registered successfully: 30 22 * * *");
 
-  // 🔒 Mantiene el proceso vivo
+  writeLog("🕒 Cron registered: 30 22 * * *");
+
+  // 💓 Heartbeat
   setInterval(() => {
     writeLog("💓 Agent heartbeat");
-  }, 10 * 60 * 1000); // cada 10 min
+  }, 10 * 60 * 1000);
 });
 
-app.on("window-all-closed", (e) => {
-  e.preventDefault();
-});
+app.on("window-all-closed", (e) => e.preventDefault());
