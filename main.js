@@ -25,12 +25,10 @@ const envPath = app.isPackaged
 
 dotenv.config({ path: envPath });
 
-// Log útil para debug (no imprime secretos)
-writeLog(`🧪 ENV loaded from: ${envPath}`);
-writeLog(
-  `🧪 ENV status: SERVER_BASE_URL=${process.env.SERVER_BASE_URL ? "✅" : "❌"}, AGENT_KEY=${process.env.AGENT_KEY ? "✅" : "❌"}, AGENT_ID=${process.env.AGENT_ID ? process.env.AGENT_ID : "(empty)"}`
-);
-
+const envResult = dotenv.config({ path: envPath });
+if (envResult.error) {
+  writeLog(`❌ ENV load error: ${envResult.error.message}`);
+}
 
 // =======================
 // LOGGING
@@ -67,6 +65,29 @@ function writeLog(line) {
 }
 
 writeLog("🔄 Agent starting...");
+
+// Log útil para debug (no imprime secretos)
+writeLog(`🧪 ENV loaded from: ${envPath}`);
+writeLog(
+  `🧪 ENV status: SERVER_BASE_URL=${process.env.SERVER_BASE_URL ? "✅" : "❌"}, AGENT_KEY=${process.env.AGENT_KEY ? "✅" : "❌"}, AGENT_ID=${process.env.AGENT_ID ? process.env.AGENT_ID : "(empty)"}`
+);
+
+
+// =======================
+// CONSOLE -> FILE LOG BRIDGE
+// =======================
+const originalLog = console.log;
+const originalErr = console.error;
+
+console.log = (...args) => {
+  try { writeLog(args.map(String).join(" ")); } catch (_) {}
+  originalLog(...args);
+};
+
+console.error = (...args) => {
+  try { writeLog("ERROR: " + args.map(String).join(" ")); } catch (_) {}
+  originalErr(...args);
+};
 
 // =======================
 // INVENTORY
@@ -200,7 +221,7 @@ app.whenReady().then(() => {
     executeInventory();
   });
 
-  writeLog("🕒 Cron registered: 30 22 * * *");
+  writeLog("🕒 Cron registered: 30 13 * * *");
 
   // 💓 Heartbeat
   setInterval(() => {
