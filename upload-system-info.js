@@ -1,191 +1,173 @@
-// upload-system-info.js
-// - Sube el inventario al servidor (PUT)
-// - Soporta ejecución en Electron empaquetado
-// - Maneja reintentos si no hay conectividad
+/**
+ * upload-system-info.js
+ * - Sube inventario al server vía PUT /api/v1/agents/:agentId/system-info
+ * - Incluye agentKey mandatorio (por default en header x-agent-key)
+ */
 
+"use strict";
+
+const fs = require("fs");
 const path = require("path");
+const dns = require("dns").promises;
 const os = require("os");
-const fs = require("fs/promises");
-const { constants } = require("fs");
-const dns = require("dns/promises");
-const dotenv = require("dotenv");
 
-// Electron solo existe cuando estamos empaquetados
-let app;
 try {
-  ({ app } = require("electron"));
-} catch {
-  app = null;
+  require("dotenv").config();
+} catch (e) {
+  console.warn("⚠️ dotenv no disponible. Continuando sin cargar .env automáticamente.");
 }
 
-// =======================
-// CARGA CORRECTA DEL .env
-// =======================
-
-const envPath =
-  app && app.isPackaged
-    ? path.join(process.resourcesPath, ".env") // Electron PROD
-    : path.join(process.cwd(), ".env");        // DEV / local
-
-dotenv.config({ path: envPath });
-
-// =======================
-// CONFIGURACIÓN
-// =======================
-
-const DEFAULT_SYSTEM_INFO_PATH = "./system-info.json";
-
-const SERVER_BASE_URL =
-  process.env.SERVER_BASE_URL || "http://localhost:3000";
-
-const AGENT_ID =
-  process.env.AGENT_ID === "auto"
-    ? os.hostname()
-    : process.env.AGENT_ID || os.hostname();
-
-const ENDPOINT_URL = `${SERVER_BASE_URL}/api/v1/agents/${encodeURIComponent(
-  AGENT_ID
-)}/system-info`;
-
-// Reintentos
-const MAX_RETRIES = 5;
-const RETRY_DELAY_MS = 30_000; // 30 segundos
-
-// =======================
-// HELPERS
-// =======================
-
-// ¿Existe el archivo?
-async function fileExists(filePath) {
+async function getFetch() {
+  if (typeof fetch === "function") return fetch;
   try {
-    await fs.access(filePath, constants.F_OK);
+    const nodeFetch = require("node-fetch");
+    return nodeFetch;
+  } catch (e) {
+    throw new Error("No se encontró fetch global ni node-fetch.");
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readEnvNumber(name, def) {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) ? v : def;
+}
+
+function readEnvString(name, def) {
+  return (process.env[name] || "").trim() || def;
+}
+
+function maskKey(key) {
+  return key ? `${key.slice(0, 3)}***${key.slice(-3)}` : "";
+}
+
+function buildEndpointUrl(baseUrl, agentId) {
+  return `${baseUrl.replace(/\/+$/, "")}/api/v1/agents/${encodeURIComponent(
+    agentId
+  )}/system-info`;
+}
+
+async function checkDns(url) {
+  try {
+    const { hostname } = new URL(url);
+    await dns.lookup(hostname);
     return true;
   } catch {
     return false;
   }
 }
 
-// ¿Hay conectividad?
-async function hasInternet() {
-  try {
-    await dns.resolve("google.com");
-    return true;
-  } catch {
-    return false;
-  }
-}
+async function sendToServer({
+  endpointUrl,
+  payload,
+  agentKey,
+  agentKeyHeader,
+  sendInBody,
+}) {
+  const f = await getFetch();
 
-// Lee y parsea system-info.json
-async function readSystemInfo(filePath) {
-  const raw = await fs.readFile(filePath, "utf8");
-  return JSON.parse(raw);
-}
+  const headers = {
+    "Content-Type": "application/json",
+    [agentKeyHeader]: agentKey,
+  };
 
-// Envía el JSON al backend
-async function sendToServer(data) {
-  const response = await fetch(ENDPOINT_URL, {
+  const body = sendInBody ? { ...payload, agentKey } : payload;
+
+  const res = await f(endpointUrl, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
+    headers,
+    body: JSON.stringify(body),
   });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Servidor respondió ${response.status}: ${text || "sin cuerpo"}`
-    );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status}: ${text || "sin cuerpo"}`);
   }
 
-  return response;
+  return res;
 }
 
-// Lógica con reintentos
-async function uploadWithRetry(data, attempt = 1) {
-  console.log(`🔁 Upload intento ${attempt}/${MAX_RETRIES}`);
-  console.log(`🌐 Endpoint: ${ENDPOINT_URL}`);
+async function uploadSystemInfo(systemInfo) {
+  if (!systemInfo || typeof systemInfo !== "object") {
+    throw new Error("systemInfo inválido");
+  }
 
-  const online = await hasInternet();
-  if (!online) {
-    if (attempt >= MAX_RETRIES) {
-      console.error("❌ Sin conexión después de varios intentos.");
-      return;
+  const SERVER_BASE_URL = readEnvString("SERVER_BASE_URL", "");
+  const AGENT_KEY = readEnvString("AGENT_KEY", "");
+  const AGENT_KEY_HEADER_NAME = readEnvString("AGENT_KEY_HEADER_NAME", "x-agent-key");
+  const SEND_AGENT_KEY_IN_BODY =
+    readEnvString("SEND_AGENT_KEY_IN_BODY", "false").toLowerCase() === "true";
+
+  const MAX_RETRIES = readEnvNumber("MAX_RETRIES", 5);
+  const RETRY_DELAY_MS = readEnvNumber("RETRY_DELAY_MS", 3000);
+
+  const AGENT_ID =
+    process.env.AGENT_ID === "auto"
+      ? os.hostname()
+      : process.env.AGENT_ID || os.hostname();
+
+  if (!SERVER_BASE_URL) throw new Error("SERVER_BASE_URL no configurado");
+  if (!AGENT_KEY) throw new Error("AGENT_KEY no configurado");
+
+  const endpointUrl = buildEndpointUrl(SERVER_BASE_URL, AGENT_ID);
+
+  if (!(await checkDns(endpointUrl))) {
+    console.warn("⚠️ DNS no resolvió host del server");
+  }
+
+  console.log("📡 Subiendo inventario");
+  console.log("   🆔 Agent ID:", AGENT_ID);
+  console.log("   🔑 Agent Key:", `(${maskKey(AGENT_KEY)})`);
+  console.log("   🌐 Endpoint:", endpointUrl);
+
+  let lastErr;
+
+  for (let i = 1; i <= MAX_RETRIES; i++) {
+    try {
+      console.log(`➡️ Intento ${i}/${MAX_RETRIES}`);
+      await sendToServer({
+        endpointUrl,
+        payload: systemInfo,
+        agentKey: AGENT_KEY,
+        agentKeyHeader: AGENT_KEY_HEADER_NAME,
+        sendInBody: SEND_AGENT_KEY_IN_BODY,
+      });
+      console.log("✅ Upload exitoso");
+      return true;
+    } catch (e) {
+      lastErr = e;
+      console.error("❌ Error:", e.message);
+      if (i < MAX_RETRIES) await sleep(RETRY_DELAY_MS);
     }
-
-    console.warn(
-      `⚠️ Sin internet. Reintentando en ${RETRY_DELAY_MS / 1000}s...`
-    );
-    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-    return uploadWithRetry(data, attempt + 1);
   }
 
-  try {
-    await sendToServer(data);
-    console.log("✅ Inventario enviado correctamente.");
-  } catch (err) {
-    console.error("❌ Error enviando inventario:", err.message);
-
-    if (attempt >= MAX_RETRIES) {
-      console.error("❌ Máximo de reintentos alcanzado.");
-      return;
-    }
-
-    console.warn(
-      `⚠️ Reintentando envío en ${RETRY_DELAY_MS / 1000}s...`
-    );
-    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-    return uploadWithRetry(data, attempt + 1);
-  }
+  throw lastErr;
 }
 
-// =======================
-// API PRINCIPAL
-// =======================
+async function runCli() {
+  const args = process.argv.slice(2);
+  const idx = args.findIndex((a) => a === "--file" || a === "-f");
+  const file = idx >= 0 ? args[idx + 1] : null;
 
-// Usado desde index.js (recomendado)
-async function uploadSystemInfo(systemInfoObject) {
-  if (!systemInfoObject || typeof systemInfoObject !== "object") {
-    throw new Error("systemInfoObject inválido.");
+  if (!file) {
+    console.log("Uso: node upload-system-info.js --file system-info.json");
+    process.exit(1);
   }
 
-  console.log("📦 Inventario recibido en memoria.");
-  console.log("📍 .env usado desde:", envPath);
-  console.log("🆔 AGENT_ID:", AGENT_ID);
+  const fullPath = path.resolve(process.cwd(), file);
+  const json = JSON.parse(fs.readFileSync(fullPath, "utf8"));
 
-  await uploadWithRetry(systemInfoObject);
+  await uploadSystemInfo(json);
 }
-
-// Para pruebas manuales
-async function uploadSystemInfoFromFile(
-  filePath = DEFAULT_SYSTEM_INFO_PATH
-) {
-  const exists = await fileExists(filePath);
-  if (!exists) {
-    throw new Error(`No existe ${filePath}`);
-  }
-
-  const systemInfo = await readSystemInfo(filePath);
-
-  console.log(`📄 ${filePath} cargado correctamente.`);
-  console.log("📍 .env usado desde:", envPath);
-  console.log("🆔 AGENT_ID:", AGENT_ID);
-
-  await uploadWithRetry(systemInfo);
-}
-
-module.exports = {
-  uploadSystemInfo,
-  uploadSystemInfoFromFile,
-};
-
-// =======================
-// EJECUCIÓN DIRECTA (CLI)
-// =======================
 
 if (require.main === module) {
-  uploadSystemInfoFromFile().catch((err) => {
-    console.error("❌ Error en upload-system-info:", err.message);
-    process.exit(1);
+  runCli().catch((e) => {
+    console.error("❌", e.message);
+    process.exit(2);
   });
 }
+
+module.exports = { uploadSystemInfo };
