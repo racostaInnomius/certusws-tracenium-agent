@@ -15,25 +15,8 @@ if (!app.requestSingleInstanceLock()) {
 app.disableHardwareAcceleration();
 
 // =======================
-// ENV (.env) LOAD
-// =======================
-// En build empaquetado, electron-builder coloca .env en: process.resourcesPath/.env
-// Ej: /Applications/Tracenium Agent.app/Contents/Resources/.env
-const envPath = app.isPackaged
-  ? path.join(process.resourcesPath, ".env")
-  : path.join(__dirname, ".env");
-
-dotenv.config({ path: envPath });
-
-const envResult = dotenv.config({ path: envPath });
-if (envResult.error) {
-  writeLog(`❌ ENV load error: ${envResult.error.message}`);
-}
-
-// =======================
 // LOGGING
 // =======================
-
 const LOG_DIR = path.join(app.getPath("userData"), "logs");
 const LOG_FILE = path.join(LOG_DIR, "agent.log");
 const MAX_LINES = 10000;
@@ -66,12 +49,34 @@ function writeLog(line) {
 
 writeLog("🔄 Agent starting...");
 
+// =======================
+// ENV (.env) LOAD
+// =======================
+// Preferimos un .env “por máquina” en userData; si no existe, usamos el del paquete.
+// - userData:  ~/Library/Application Support/certusws-tracenium-agent/.env
+// - packaged:  /Applications/Tracenium Agent.app/Contents/Resources/.env
+// - dev:       ./ .env (del repo)
+const userEnvPath = path.join(app.getPath("userData"), ".env");
+const packagedEnvPath = path.join(process.resourcesPath, ".env");
+const devEnvPath = path.join(__dirname, ".env");
+
+const envPath = fs.existsSync(userEnvPath)
+  ? userEnvPath
+  : app.isPackaged
+    ? packagedEnvPath
+    : devEnvPath;
+
+// Cargamos dotenv UNA sola vez
+const envResult = dotenv.config({ path: envPath });
+
 // Log útil para debug (no imprime secretos)
 writeLog(`🧪 ENV loaded from: ${envPath}`);
+if (envResult && envResult.error) {
+  writeLog(`❌ ENV load error: ${envResult.error.message}`);
+}
 writeLog(
   `🧪 ENV status: SERVER_BASE_URL=${process.env.SERVER_BASE_URL ? "✅" : "❌"}, AGENT_KEY=${process.env.AGENT_KEY ? "✅" : "❌"}, AGENT_ID=${process.env.AGENT_ID ? process.env.AGENT_ID : "(empty)"}`
 );
-
 
 // =======================
 // CONSOLE -> FILE LOG BRIDGE
@@ -80,19 +85,22 @@ const originalLog = console.log;
 const originalErr = console.error;
 
 console.log = (...args) => {
-  try { writeLog(args.map(String).join(" ")); } catch (_) {}
+  try {
+    writeLog(args.map(String).join(" "));
+  } catch (_) {}
   originalLog(...args);
 };
 
 console.error = (...args) => {
-  try { writeLog("ERROR: " + args.map(String).join(" ")); } catch (_) {}
+  try {
+    writeLog("ERROR: " + args.map(String).join(" "));
+  } catch (_) {}
   originalErr(...args);
 };
 
 // =======================
 // INVENTORY
 // =======================
-
 let runInventory;
 try {
   runInventory = require("./index").runInventory;
@@ -104,7 +112,6 @@ try {
 // =======================
 // AUTO UPDATE
 // =======================
-
 let updateCheckInProgress = false;
 
 function setupAutoUpdater() {
@@ -151,9 +158,7 @@ function checkForUpdatesSafely() {
 
   autoUpdater
     .checkForUpdates()
-    .catch((err) =>
-      writeLog("❌ Update check failed: " + err.message)
-    )
+    .catch((err) => writeLog("❌ Update check failed: " + err.message))
     .finally(() => {
       updateCheckInProgress = false;
     });
@@ -162,8 +167,8 @@ function checkForUpdatesSafely() {
 // =======================
 // WINDOW (HIDDEN)
 // =======================
-
 let mainWindow;
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 400,
@@ -177,7 +182,6 @@ function createWindow() {
 // =======================
 // INVENTORY EXECUTION
 // =======================
-
 async function executeInventory() {
   if (!runInventory) {
     writeLog("❌ runInventory undefined");
@@ -196,7 +200,6 @@ async function executeInventory() {
 // =======================
 // APP READY
 // =======================
-
 app.whenReady().then(() => {
   app.setAppUserModelId("com.tracenium.agent");
   createWindow();
