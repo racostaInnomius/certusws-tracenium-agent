@@ -3,6 +3,7 @@ const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
 const cron = require("node-cron");
+const dotenv = require("dotenv");
 
 // =======================
 // SINGLE INSTANCE
@@ -12,6 +13,24 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.disableHardwareAcceleration();
+
+// =======================
+// ENV (.env) LOAD
+// =======================
+// En build empaquetado, electron-builder coloca .env en: process.resourcesPath/.env
+// Ej: /Applications/Tracenium Agent.app/Contents/Resources/.env
+const envPath = app.isPackaged
+  ? path.join(process.resourcesPath, ".env")
+  : path.join(__dirname, ".env");
+
+dotenv.config({ path: envPath });
+
+// Log útil para debug (no imprime secretos)
+writeLog(`🧪 ENV loaded from: ${envPath}`);
+writeLog(
+  `🧪 ENV status: SERVER_BASE_URL=${process.env.SERVER_BASE_URL ? "✅" : "❌"}, AGENT_KEY=${process.env.AGENT_KEY ? "✅" : "❌"}, AGENT_ID=${process.env.AGENT_ID ? process.env.AGENT_ID : "(empty)"}`
+);
+
 
 // =======================
 // LOGGING
