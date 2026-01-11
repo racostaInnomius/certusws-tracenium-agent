@@ -32,15 +32,33 @@ jobs:
       - name: Create .env file (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          "SERVER_BASE_URL=http://192.168.68.104:3000" | Out-File -FilePath .env -Encoding UTF8
-          "AGENT_ID=auto" | Out-File -FilePath .env -Append -Encoding UTF8
+          @"
+          SERVER_BASE_URL=http://192.168.68.104:3000
+          AGENT_ID=auto
+          SCHEDULE_ENABLED=true
+
+          # Opcionales (solo si el server los requiere distinto)
+          AGENT_KEY_HEADER_NAME=x-agent-key
+          SEND_AGENT_KEY_IN_BODY=false
+          MAX_RETRIES=15
+          RETRY_DELAY_MS=3000
+          "@ | Out-File -FilePath .env -Encoding utf8
 
       # macOS + Linux
       - name: Create .env file (macOS + Linux)
         if: matrix.os != 'windows-latest'
         run: |
-          echo "SERVER_BASE_URL=http://192.168.68.104:3000" > .env
-          echo "AGENT_ID=auto" >> .env
+          cat > .env << 'EOF'
+          SERVER_BASE_URL=http://192.168.68.104:3000
+          AGENT_ID=auto
+          SCHEDULE_ENABLED=true
+
+          # Opcionales (solo si el server los requiere distinto)
+          AGENT_KEY_HEADER_NAME=x-agent-key
+          SEND_AGENT_KEY_IN_BODY=false
+          MAX_RETRIES=15
+          RETRY_DELAY_MS=3000
+          EOF
 
       - name: Install Dependencies
         run: npm install

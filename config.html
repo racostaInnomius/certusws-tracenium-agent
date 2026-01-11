@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tracenium Agent - Agent Key</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 16px; }
+      label { display:block; margin-top: 14px; font-weight: 700; }
+      input { width: 100%; padding: 10px; margin-top: 6px; box-sizing: border-box; }
+      button { margin-top: 16px; width: 100%; padding: 10px; font-weight: 800; cursor: pointer; }
+      .hint { margin-top: 10px; font-size: 12px; opacity: 0.8; }
+      #msg { margin-top: 12px; font-weight: 700; }
+      .error { color: #b00020; }
+      .ok { color: #0b6b0b; }
+    </style>
+  </head>
+  <body>
+    <h2>Configurar Agent Key</h2>
+    <div class="hint">Este valor lo proporciona tu administrador. Se guardará localmente en tu equipo.</div>
+
+    <label>AGENT_KEY</label>
+    <input id="agentKey" placeholder="Ej: 000000" />
+
+    <button id="saveBtn">Guardar</button>
+
+    <div id="msg"></div>
+
+    <script>
+      const msg = document.getElementById("msg");
+
+      function setMsg(text, cls) {
+        msg.className = cls || "";
+        msg.textContent = text || "";
+      }
+
+      async function load() {
+        try {
+          const current = await window.agentConfig.getCurrent();
+          document.getElementById("agentKey").value = current.agentKey || "";
+          setMsg("", "");
+        } catch (e) {
+          setMsg("Error cargando config: " + (e?.message || e), "error");
+        }
+      }
+
+      document.getElementById("saveBtn").addEventListener("click", async () => {
+        setMsg("", "");
+        const payload = {
+          agentKey: document.getElementById("agentKey").value.trim(),
+        };
+
+        try {
+          const res = await window.agentConfig.save(payload);
+          if (!res.ok) {
+            setMsg(res.error || "No se pudo guardar.", "error");
+            return;
+          }
+          setMsg("✅ Guardado. Cerrando...", "ok");
+          // main.js cierra la ventana
+        } catch (e) {
+          setMsg("Error guardando: " + (e?.message || e), "error");
+        }
+      });
+
+      load();
+    </script>
+  </body>
+</html>
