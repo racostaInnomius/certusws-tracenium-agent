@@ -16,11 +16,11 @@
     </style>
   </head>
   <body>
-    <h2>Configurar Agent Key</h2>
+    <h2>Tracenium Agent - Configurar Agent Key</h2>
     <div class="hint">Este valor lo proporciona tu administrador. Se guardará localmente en tu equipo.</div>
 
     <label>AGENT_KEY</label>
-    <input id="agentKey" placeholder="Ej: 000000" />
+    <input id="agentKey" type="password" placeholder="Ej: 000000" />
 
     <button id="saveBtn">Guardar</button>
 
@@ -28,6 +28,8 @@
 
     <script>
       const msg = document.getElementById("msg");
+      const agentKeyInput = document.getElementById("agentKey");
+      const saveBtn = document.getElementById("saveBtn");
 
       function setMsg(text, cls) {
         msg.className = cls || "";
@@ -37,18 +39,17 @@
       async function load() {
         try {
           const current = await window.agentConfig.getCurrent();
-          document.getElementById("agentKey").value = current.agentKey || "";
+          agentKeyInput.value = current.agentKey || "";
           setMsg("", "");
+          agentKeyInput.focus();
         } catch (e) {
           setMsg("Error cargando config: " + (e?.message || e), "error");
         }
       }
 
-      document.getElementById("saveBtn").addEventListener("click", async () => {
+      async function save() {
         setMsg("", "");
-        const payload = {
-          agentKey: document.getElementById("agentKey").value.trim(),
-        };
+        const payload = { agentKey: agentKeyInput.value.trim() };
 
         try {
           const res = await window.agentConfig.save(payload);
@@ -61,6 +62,12 @@
         } catch (e) {
           setMsg("Error guardando: " + (e?.message || e), "error");
         }
+      }
+
+      saveBtn.addEventListener("click", save);
+
+      agentKeyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") save();
       });
 
       load();

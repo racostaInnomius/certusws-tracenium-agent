@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const cron = require("node-cron");
 const dotenv = require("dotenv");
+const os = require("os");
 
 // =======================
 // SINGLE INSTANCE
@@ -50,7 +51,50 @@ function writeLog(line) {
 writeLog("🔄 Agent starting...");
 
 // =======================
-// ENV HELPERS
+// CONSOLE -> FILE LOG BRIDGE
+// =======================
+const originalLog = console.log;
+const originalErr = console.error;
+
+console.log = (...args) => {
+  try {
+    writeLog(args.map(String).join(" "));
+  } catch (_) {}
+  originalLog(...args);
+};
+
+console.error = (...args) => {
+  try {
+    writeLog("ERROR: " + args.map(String).join(" "));
+  } catch (_) {}
+  originalErr(...args);
+};
+
+// =======================
+// PATH HELPERS (packaged vs dev)
+// =======================
+function firstExistingPath(paths) {
+  for (const p of paths) {
+    try {
+      if (p && fs.existsSync(p)) return p;
+    } catch (_) {}
+  }
+  return null;
+}
+
+function resolveAppAsset(filename) {
+  // En packaged, electron-builder puede poner archivos en Resources (extraResources)
+  // o pueden vivir dentro del app.asar (files).
+  const candidates = [
+    app.isPackaged ? path.join(process.resourcesPath, filename) : null,
+    path.join(__dirname, filename),
+  ].filter(Boolean);
+
+  return firstExistingPath(candidates);
+}
+
+// =======================
+// ENV (.env) LOAD
 // =======================
 function getEnvPaths() {
   const userEnvPath = path.join(app.getPath("userData"), ".env");
@@ -88,6 +132,7 @@ function parseEnvFile(contents) {
 }
 
 function serializeEnvFile(envObj) {
+  // Mantener simple: solo k=v, ordenado
   const keys = Object.keys(envObj).sort();
   const lines = [];
   for (const k of keys) {
@@ -109,21 +154,21 @@ function readUserEnvObject() {
   return parseEnvFile(fs.readFileSync(userEnvPath, "utf8"));
 }
 
-// Solo “upsert” de lo que el usuario configura (en este caso AGENT_KEY)
-function upsertUserEnv(valuesToSet) {
+function upsertUserEnv(partial) {
+  // Guardamos configuración “por máquina” SIN tocar el .env empaquetado.
   ensureUserEnvDir();
-  const { userEnvPath } = getEnvPaths();
 
-  const existing = readUserEnvObject();
-  const merged = { ...existing, ...valuesToSet };
+  const { userEnvPath } = getEnvPaths();
+  const current = readUserEnvObject();
+
+  const merged = { ...current, ...partial };
 
   fs.writeFileSync(userEnvPath, serializeEnvFile(merged), "utf8");
+
   return userEnvPath;
 }
 
-// =======================
-// LOAD ENV ON STARTUP
-// =======================
+// Cargamos env y lo reportamos
 const { envPath, result: envResult } = loadEnv();
 
 writeLog(`🧪 ENV loaded from: ${envPath}`);
@@ -134,26 +179,6 @@ if (envResult && envResult.error) {
 writeLog(
   `🧪 ENV status: SERVER_BASE_URL=${process.env.SERVER_BASE_URL ? "✅" : "❌"}, AGENT_KEY=${process.env.AGENT_KEY ? "✅" : "❌"}, AGENT_ID=${process.env.AGENT_ID ? process.env.AGENT_ID : "(empty)"}`
 );
-
-// =======================
-// CONSOLE -> FILE LOG BRIDGE
-// =======================
-const originalLog = console.log;
-const originalErr = console.error;
-
-console.log = (...args) => {
-  try {
-    writeLog(args.map(String).join(" "));
-  } catch (_) {}
-  originalLog(...args);
-};
-
-console.error = (...args) => {
-  try {
-    writeLog("ERROR: " + args.map(String).join(" "));
-  } catch (_) {}
-  originalErr(...args);
-};
 
 // =======================
 // INVENTORY
@@ -175,21 +200,10 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  autoUpdater.on("checking-for-update", () =>
-    writeLog("🔍 Checking for update...")
-  );
-
-  autoUpdater.on("update-available", (info) =>
-    writeLog(`⬆️ Update available: ${info.version}`)
-  );
-
-  autoUpdater.on("update-not-available", () =>
-    writeLog("✔ No updates available.")
-  );
-
-  autoUpdater.on("error", (err) =>
-    writeLog("❌ Auto-update error: " + err.message)
-  );
+  autoUpdater.on("checking-for-update", () => writeLog("🔍 Checking for update..."));
+  autoUpdater.on("update-available", (info) => writeLog(`⬆️ Update available: ${info.version}`));
+  autoUpdater.on("update-not-available", () => writeLog("✔ No updates available."));
+  autoUpdater.on("error", (err) => writeLog("❌ Auto-update error: " + err.message));
 
   autoUpdater.on("update-downloaded", () => {
     writeLog("📦 Update downloaded. Installing...");
@@ -236,40 +250,6 @@ function createWindow() {
 }
 
 // =======================
-// CONFIG WINDOW (UI) - only AGENT_KEY
-// =======================
-let configWindow = null;
-
-function openConfigWindow() {
-  if (configWindow && !configWindow.isDestroyed()) {
-    configWindow.focus();
-    return;
-  }
-
-  configWindow = new BrowserWindow({
-    width: 420,
-    height: 280,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    show: true,
-    title: "Tracenium Agent - Agent Key",
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, "preload.js"),
-    },
-  });
-
-  configWindow.removeMenu();
-  configWindow.loadFile(path.join(__dirname, "config.html"));
-
-  configWindow.on("closed", () => {
-    configWindow = null;
-  });
-}
-
-// =======================
 // INVENTORY EXECUTION
 // =======================
 async function executeInventory() {
@@ -280,6 +260,13 @@ async function executeInventory() {
 
   try {
     writeLog("▶ Executing inventory...");
+
+    // (Opcional) AGENT_ID auto por hostname (por si runInventory lo usa)
+    // NOTA: esto NO pisa una config explícita en env.
+    if (!process.env.AGENT_ID || process.env.AGENT_ID === "auto") {
+      process.env.AGENT_ID = os.hostname();
+    }
+
     await runInventory();
     writeLog("✔ Inventory completed successfully.");
   } catch (err) {
@@ -321,14 +308,93 @@ function startSchedulers() {
   }, 10 * 60 * 1000);
 }
 
+// =======================
+// CONFIG WINDOW (UI) - only AGENT_KEY
+// =======================
+let configWindow = null;
+
+function openConfigWindow() {
+  if (configWindow && !configWindow.isDestroyed()) {
+    configWindow.focus();
+    return;
+  }
+
+  // ✅ preload.js y config.html deben resolverse bien en packaged
+  const preloadPath = resolveAppAsset("preload.js");
+  const configPath = resolveAppAsset("config.html");
+
+  writeLog(`🧪 preload.js resolved: ${preloadPath || "(NOT FOUND)"}`);
+  writeLog(`🧪 config.html resolved: ${configPath || "(NOT FOUND)"}`);
+
+  configWindow = new BrowserWindow({
+    width: 420,
+    height: 280,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    show: true,
+    title: "Tracenium Agent - Agent Key",
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      // Si preload no existe, la UI no podrá hablar con main (IPC)
+      preload: preloadPath || undefined,
+    },
+  });
+
+  configWindow.removeMenu();
+
+  // Diagnóstico
+  configWindow.webContents.on("did-fail-load", (_e, code, desc, url) => {
+    writeLog(`❌ config window did-fail-load: code=${code} desc=${desc} url=${url}`);
+  });
+
+  configWindow.webContents.on("render-process-gone", (_e, details) => {
+    writeLog(`❌ config window render-process-gone: reason=${details.reason}`);
+  });
+
+  configWindow.webContents.on("console-message", (_e, level, message) => {
+    writeLog(`🧩 config window console(level=${level}): ${message}`);
+  });
+
+  // Si falta config.html, fallback mínimo (para no dejar ventana en blanco)
+  if (!configPath) {
+    writeLog(`❌ config.html not found (packaging issue). Using fallback HTML.`);
+    const fallbackHtml = `
+      <!doctype html><html><body style="font-family: -apple-system; margin:16px;">
+        <h2>Configurar Agent Key</h2>
+        <p>No se encontró <b>config.html</b> en el build. Fallback temporal.</p>
+        <input id="k" placeholder="AGENT_KEY" style="padding:10px; width:100%; box-sizing:border-box;" />
+        <button id="b" style="margin-top:12px; padding:10px; width:100%;">Guardar</button>
+        <div id="m" style="margin-top:10px; font-weight:700;"></div>
+        <script>
+          const msg = (t)=> document.getElementById('m').textContent = t;
+          document.getElementById('b').onclick = async () => {
+            const agentKey = document.getElementById('k').value.trim();
+            if (!agentKey) return msg("AGENT_KEY requerido");
+            try {
+              const res = await window.agentConfig.save({ agentKey });
+              msg(res.ok ? "Guardado ✅" : (res.error || "Error"));
+            } catch (e) { msg("Error: " + e.message); }
+          };
+        </script>
+      </body></html>
+    `;
+    configWindow.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(fallbackHtml));
+  } else {
+    configWindow.loadFile(configPath);
+  }
+
+  configWindow.on("closed", () => {
+    configWindow = null;
+  });
+}
 
 // =======================
 // IPC (CONFIG)
 // =======================
 ipcMain.handle("agentConfig:getCurrent", async () => {
   const userEnv = readUserEnvObject();
-
-  // Solo regresamos lo necesario para la UI
   return {
     agentKey: userEnv.AGENT_KEY || process.env.AGENT_KEY || "",
   };
@@ -385,10 +451,10 @@ app.whenReady().then(() => {
   const hasServerBaseUrl = Boolean((process.env.SERVER_BASE_URL || "").trim());
   const hasAgentKey = Boolean((process.env.AGENT_KEY || "").trim());
 
-  // Si falta SERVER_BASE_URL, eso es error de build/config (no del usuario)
+  // Si falta SERVER_BASE_URL, eso es build/config (no del usuario)
   if (!hasServerBaseUrl) {
     writeLog("❌ SERVER_BASE_URL faltante. Revisa el .env empaquetado en Resources.");
-    // Aun así abrimos config solo si quieres (pero no sirve sin URL)
+    // Abrimos config para que al menos se vea UI (pero sin URL no sube inventario)
     openConfigWindow();
     return;
   }

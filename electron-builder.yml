@@ -8,13 +8,21 @@ extraMetadata:
 
 files:
   - "*.js"
+  - "config.html"
   - "build/**"
   - "package.json"
   - "!node_modules/electron/**"
 
 extraResources:
+  # .env empaquetado (solo defaults; NO debe incluir AGENT_KEY)
   - from: ".env"
     to: ".env"
+
+  # UI assets para asegurar que existan en packaged
+  - from: "config.html"
+    to: "config.html"
+  - from: "preload.js"
+    to: "preload.js"
 
 publish:
   provider: github
@@ -27,7 +35,7 @@ publish:
 # ===========================
 win:
   target:
-    - nsis        # NECESARIO PARA AUTOUPDATE
+    - nsis
     - zip
   icon: build/icon.ico
   artifactName: "tracenium-agent-${version}-win.${ext}"
