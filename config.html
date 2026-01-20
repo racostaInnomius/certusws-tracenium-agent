@@ -1,73 +1,290 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Tracenium Agent - Agent Key</title>
+
     <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 16px; }
-      label { display:block; margin-top: 14px; font-weight: 700; }
-      input { width: 100%; padding: 10px; margin-top: 6px; box-sizing: border-box; }
-      button { margin-top: 16px; width: 100%; padding: 10px; font-weight: 800; cursor: pointer; }
-      .hint { margin-top: 10px; font-size: 12px; opacity: 0.8; }
-      #msg { margin-top: 12px; font-weight: 700; }
-      .error { color: #b00020; }
-      .ok { color: #0b6b0b; }
+      :root{
+        --bg:#0f2a33;
+        --bg2:#102f39;
+        --cyan:#27e7e7;
+        --text:#e9f6f6;
+        --muted:#b7d7d7;
+        --line:#1bbcbc;
+
+        --btn-green:#7CFF3B;
+        --btn-red:#ff1f1f;
+
+        --input-bg:#ffffff;
+        --input-text:#0b1f25;
+      }
+
+      * { box-sizing: border-box; }
+      body{
+        margin:0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      /* Top header */
+      .top {
+        position: relative;
+        width: 100%;
+        height: 140px;
+        background: linear-gradient(180deg, #0f2a33 0%, #0e2a33 100%);
+        border-bottom: 2px solid var(--line);
+        overflow:hidden;
+      }
+
+      .top img{
+        height: 120px;
+        margin: 10px 0 0 16px;
+        object-fit: contain;
+      }
+
+      .top-right{
+        position:absolute;
+        top: 14px;
+        right: 18px;
+        text-align:right;
+      }
+
+      .version{
+        color: var(--cyan);
+        font-size: 26px;
+        font-weight: 800;
+      }
+
+      .subtitle{
+        margin-top: 18px;
+        font-size: 28px;
+        font-weight: 800;
+        color: var(--text);
+      }
+
+      /* Content */
+      .content{
+        padding: 28px 24px 18px;
+      }
+
+      .row{
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        gap: 22px;
+        margin-top: 12px;
+      }
+
+      .label{
+        width: 180px;
+        text-align:right;
+        font-size: 26px;
+        font-weight: 800;
+        color: var(--cyan);
+      }
+
+      .inputWrap{
+        width: 360px;
+      }
+
+      input{
+        width: 100%;
+        height: 46px;
+        border-radius: 10px;
+        border: none;
+        background: var(--input-bg);
+        color: var(--input-text);
+        font-size: 18px;
+        padding: 0 14px;
+        outline: none;
+      }
+
+      .helper{
+        max-width: 660px;
+        margin: 26px auto 0;
+        font-size: 24px;
+        line-height: 1.25;
+        color: var(--cyan);
+        font-weight: 800;
+        text-align:left;
+      }
+
+      .buttons{
+        display:flex;
+        justify-content:center;
+        gap: 90px;
+        margin-top: 36px;
+        margin-bottom: 12px;
+      }
+
+      button{
+        width: 270px;
+        height: 54px;
+        border: none;
+        border-radius: 10px;
+        font-size: 22px;
+        font-weight: 900;
+        cursor:pointer;
+      }
+
+      #sendBtn{
+        background: var(--btn-green);
+        color:#0a240a;
+      }
+
+      #cancelBtn{
+        background: var(--btn-red);
+        color:#fff;
+      }
+
+      #msg{
+        text-align:center;
+        margin-top: 10px;
+        font-size: 14px;
+        font-weight: 700;
+        min-height: 18px;
+      }
+
+      .err{ color:#ffb3b3; }
+      .ok{ color:#b8ffb8; }
+      .muted{ color: var(--muted); }
+
+      .footer{
+        display:flex;
+        justify-content:flex-end;
+        align-items:center;
+        gap: 10px;
+        padding: 0 18px 14px;
+        color: var(--muted);
+        opacity: 0.9;
+        font-weight: 700;
+      }
+
+      .footer .dot{
+        width: 18px; height: 18px; border-radius: 4px;
+        background: rgba(255,255,255,0.15);
+      }
     </style>
   </head>
+
   <body>
-    <h2>Tracenium Agent - Configurar Agent Key</h2>
-    <div class="hint">Este valor lo proporciona tu administrador. Se guardará localmente en tu equipo.</div>
+    <div class="top">
+      <img src="banner.png" alt="Tracenium" />
+      <div class="top-right">
+        <div id="version" class="version">Version: --</div>
+        <div class="subtitle">ITAM - Agent</div>
+      </div>
+    </div>
 
-    <label>AGENT_KEY</label>
-    <input id="agentKey" type="password" placeholder="Ej: 000000" />
+    <div class="content">
+      <div class="row">
+        <div class="label">Agent Key*:</div>
+        <div class="inputWrap">
+          <input id="agentKey" type="password" autocomplete="off" />
+        </div>
+      </div>
 
-    <button id="saveBtn">Guardar</button>
+      <div class="helper">
+        An agent key is required to continue the installation.<br/>
+        If you do not have an agent key, contact your designated Tracenium support agent.
+      </div>
 
-    <div id="msg"></div>
+      <div class="buttons">
+        <button id="sendBtn">Send</button>
+        <button id="cancelBtn">Cancel</button>
+      </div>
+
+      <div id="msg" class="muted"></div>
+    </div>
+
+    <div class="footer">
+      <span>Powered by CWS</span>
+      <span class="dot"></span>
+    </div>
 
     <script>
-      const msg = document.getElementById("msg");
       const agentKeyInput = document.getElementById("agentKey");
-      const saveBtn = document.getElementById("saveBtn");
+      const sendBtn = document.getElementById("sendBtn");
+      const cancelBtn = document.getElementById("cancelBtn");
+      const msg = document.getElementById("msg");
+      const versionEl = document.getElementById("version");
 
-      function setMsg(text, cls) {
-        msg.className = cls || "";
+      function setMsg(text, cls){
+        msg.className = cls || "muted";
         msg.textContent = text || "";
       }
 
-      async function load() {
-        try {
+      async function load(){
+        try{
+          const info = await window.agentConfig.getAppInfo();
+          versionEl.textContent = `Version: ${info.version || "--"}`;
+
           const current = await window.agentConfig.getCurrent();
           agentKeyInput.value = current.agentKey || "";
-          setMsg("", "");
           agentKeyInput.focus();
-        } catch (e) {
-          setMsg("Error cargando config: " + (e?.message || e), "error");
+        }catch(e){
+          setMsg("Error loading UI info", "err");
         }
       }
 
-      async function save() {
-        setMsg("", "");
-        const payload = { agentKey: agentKeyInput.value.trim() };
+      async function onSend(){
+        const agentKey = (agentKeyInput.value || "").trim();
+        if(!agentKey){
+          setMsg("Agent Key is required.", "err");
+          return;
+        }
 
-        try {
-          const res = await window.agentConfig.save(payload);
-          if (!res.ok) {
-            setMsg(res.error || "No se pudo guardar.", "error");
+        sendBtn.disabled = true;
+        cancelBtn.disabled = true;
+        setMsg("Validating Agent Key...", "muted");
+
+        try{
+          // 1) validate against server (real validation)
+          const v = await window.agentConfig.validateAgentKey({ agentKey });
+
+          if(!v.ok){
+            setMsg(v.error || "Invalid Agent Key.", "err");
+            sendBtn.disabled = false;
+            cancelBtn.disabled = false;
             return;
           }
-          setMsg("✅ Guardado. Cerrando...", "ok");
-          // main.js cierra la ventana
-        } catch (e) {
-          setMsg("Error guardando: " + (e?.message || e), "error");
+
+          setMsg("Agent Key valid. Saving...", "ok");
+
+          // 2) save locally (userData/.env) -> main.js will close window
+          const s = await window.agentConfig.save({ agentKey });
+
+          if(!s.ok){
+            setMsg(s.error || "Could not save Agent Key.", "err");
+            sendBtn.disabled = false;
+            cancelBtn.disabled = false;
+            return;
+          }
+
+          setMsg("Saved ✔", "ok");
+        }catch(e){
+          setMsg("Validation failed. Check network/server.", "err");
+          sendBtn.disabled = false;
+          cancelBtn.disabled = false;
         }
       }
 
-      saveBtn.addEventListener("click", save);
+      async function onCancel(){
+        try{
+          await window.agentConfig.cancel();
+        }catch(e){
+          // ignore
+        }
+      }
+
+      sendBtn.addEventListener("click", onSend);
+      cancelBtn.addEventListener("click", onCancel);
 
       agentKeyInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") save();
+        if (e.key === "Enter") onSend();
       });
 
       load();

@@ -24,6 +24,9 @@ extraResources:
   - from: "preload.js"
     to: "preload.js"
 
+  - from: "banner.png"
+    to: "banner.png"
+
 publish:
   provider: github
   owner: racostaInnomius

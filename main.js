@@ -436,6 +436,72 @@ ipcMain.handle("agentConfig:save", async (_event, payload) => {
   return { ok: true, savedPath };
 });
 
+ipcMain.handle("agentConfig:getAppInfo", async () => {
+  return {
+    version: app.getVersion(),
+  };
+});
+
+ipcMain.handle("agentConfig:cancel", async () => {
+  writeLog("❎ User cancelled Agent Key entry. Quitting app...");
+  app.quit();
+  return { ok: true };
+});
+
+ipcMain.handle("agentConfig:validateAgentKey", async (_event, payload) => {
+  try {
+    const agentKey = String(payload?.agentKey || "").trim();
+    if (!agentKey) return { ok: false, error: "AGENT_KEY es requerido." };
+
+    const base = String(process.env.SERVER_BASE_URL || "").trim();
+    if (!base) return { ok: false, error: "SERVER_BASE_URL no configurado." };
+
+    // header configurable (default x-agent-key)
+    const headerName = String(process.env.AGENT_KEY_HEADER_NAME || "x-agent-key").trim() || "x-agent-key";
+
+    // Endpoint de validación (recomendado)
+    const validatePath = String(process.env.VALIDATE_AGENT_KEY_PATH || "/api/v1/agents/validate-agent-key").trim();
+
+    const url = base.replace(/\/+$/, "") + validatePath;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        [headerName]: agentKey,
+        "accept": "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      // opcional: leer body
+      let data = null;
+      try { data = await res.json(); } catch (_) {}
+      return { ok: true, data };
+    }
+
+    // Si es 401/403 -> inválido
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, error: "Agent Key inválido o no autorizado." };
+    }
+
+    // 404 sugiere que el endpoint no existe
+    if (res.status === 404) {
+      return { ok: false, error: "Endpoint de validación no existe en el server (404)." };
+    }
+
+    return { ok: false, error: `Validación falló (HTTP ${res.status}).` };
+  } catch (err) {
+    const isAbort = String(err?.name || "").includes("Abort");
+    return { ok: false, error: isAbort ? "Timeout validando Agent Key." : "Error validando Agent Key." };
+  }
+});
+
 // =======================
 // APP READY
 // =======================
