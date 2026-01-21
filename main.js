@@ -154,15 +154,27 @@ function readUserEnvObject() {
   return parseEnvFile(fs.readFileSync(userEnvPath, "utf8"));
 }
 
+function readEnvObjectFromFile(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return {};
+  return parseEnvFile(fs.readFileSync(filePath, "utf8"));
+}
+
 function upsertUserEnv(partial) {
-  // Guardamos configuración “por máquina” SIN tocar el .env empaquetado.
   ensureUserEnvDir();
 
-  const { userEnvPath } = getEnvPaths();
-  const current = readUserEnvObject();
+  const { userEnvPath, packagedEnvPath, devEnvPath } = getEnvPaths();
 
-  const merged = { ...current, ...partial };
+  // 1) Base env: packaged (si existe) o dev (si no)
+  const basePath = fs.existsSync(packagedEnvPath) ? packagedEnvPath : devEnvPath;
+  const baseObj = readEnvObjectFromFile(basePath);
 
+  // 2) User env (si existe)
+  const currentUserObj = readEnvObjectFromFile(userEnvPath);
+
+  // 3) Merge (base -> user -> partial)
+  const merged = { ...baseObj, ...currentUserObj, ...partial };
+
+  // 4) Escribir userData/.env COMPLETO
   fs.writeFileSync(userEnvPath, serializeEnvFile(merged), "utf8");
 
   return userEnvPath;
