@@ -26,6 +26,8 @@ extraResources:
 
   - from: "banner.png"
     to: "banner.png"
+  - from: "banner_.png"
+    to: "banner_.png"
 
 publish:
   provider: github
