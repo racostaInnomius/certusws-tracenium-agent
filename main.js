@@ -193,6 +193,113 @@ writeLog(
 );
 
 // =======================
+// CLI ARGS (AgentKey via --agent-key)
+// =======================
+function getCliArgValue(name) {
+  // soporta: --agent-key 123 | --agent-key=123
+  const argv = Array.isArray(process.argv) ? process.argv : [];
+  const eqPrefix = `--${name}=`;
+
+  for (let i = 0; i < argv.length; i++) {
+    const a = String(argv[i] || "");
+
+    if (a.startsWith(eqPrefix)) {
+      return a.substring(eqPrefix.length);
+    }
+
+    if (a === `--${name}`) {
+      const next = argv[i + 1];
+      if (next && !String(next).startsWith("--")) return String(next);
+    }
+  }
+
+  return "";
+}
+
+function maskKey(key) {
+  const s = String(key || "");
+  if (s.length <= 6) return "***";
+  return `${s.slice(0, 3)}***${s.slice(-3)}`;
+}
+
+async function applyAgentKeyFromCliIfPresent() {
+  // Aceptamos varios aliases por si IT usa otra convención
+  const cliKey =
+    getCliArgValue("agent-key") ||
+    getCliArgValue("agentKey") ||
+    getCliArgValue("AGENT_KEY");
+
+  const agentKey = String(cliKey || "").trim();
+  if (!agentKey) return { applied: false, reason: "no-cli" };
+
+  writeLog(`🧩 AgentKey recibido por CLI: (${maskKey(agentKey)})`);
+
+  const base = String(process.env.SERVER_BASE_URL || "").trim();
+  if (!base) {
+    writeLog("❌ SERVER_BASE_URL faltante. No se puede validar AgentKey por CLI.");
+    return { applied: false, reason: "no-server-base-url" };
+  }
+
+  // header configurable (default x-agent-key)
+  const headerName =
+    String(process.env.AGENT_KEY_HEADER_NAME || "x-agent-key").trim() || "x-agent-key";
+
+  // Endpoint de validación (recomendado)
+  const validatePath =
+    String(process.env.VALIDATE_AGENT_KEY_PATH || "/api/v1/agents/validate-agent-key").trim();
+
+  const url = base.replace(/\/+$/, "") + validatePath;
+
+  try {
+    writeLog(`🔎 Validando AgentKey por CLI en: ${url}`);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        [headerName]: agentKey,
+        accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        writeLog("❌ AgentKey CLI inválido o no autorizado. Se abrirá UI.");
+      } else if (res.status === 404) {
+        writeLog("❌ Endpoint de validación no existe (404). Se abrirá UI.");
+      } else {
+        writeLog(`❌ Validación CLI falló (HTTP ${res.status}). Se abrirá UI.`);
+      }
+      return { applied: false, reason: `http-${res.status}` };
+    }
+
+    // Guardar en userData/.env (con merge robusto)
+    const savedPath = upsertUserEnv({ AGENT_KEY: agentKey });
+
+    // Recargar env desde el archivo guardado (para que process.env ya lo tenga)
+    dotenv.config({ path: savedPath });
+
+    writeLog(`✅ AgentKey (CLI) guardado en: ${savedPath}`);
+    writeLog(
+      `🧪 ENV status (after CLI save): SERVER_BASE_URL=${process.env.SERVER_BASE_URL ? "✅" : "❌"}, AGENT_KEY=${process.env.AGENT_KEY ? "✅" : "❌"}, AGENT_ID=${process.env.AGENT_ID ? process.env.AGENT_ID : "(empty)"}`
+    );
+
+    return { applied: true, reason: "ok" };
+  } catch (err) {
+    const isAbort = String(err?.name || "").includes("Abort");
+    writeLog(
+      `❌ Error validando AgentKey por CLI: ${isAbort ? "Timeout" : (err?.message || "unknown")}. Se abrirá UI.`
+    );
+    return { applied: false, reason: isAbort ? "timeout" : "error" };
+  }
+}
+
+// =======================
 // INVENTORY
 // =======================
 let runInventory;
@@ -517,7 +624,7 @@ ipcMain.handle("agentConfig:validateAgentKey", async (_event, payload) => {
 // =======================
 // APP READY
 // =======================
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   app.setAppUserModelId("com.tracenium.agent");
   createWindow();
   writeLog("App ready.");
@@ -527,7 +634,7 @@ app.whenReady().then(() => {
   }
 
   const hasServerBaseUrl = Boolean((process.env.SERVER_BASE_URL || "").trim());
-  const hasAgentKey = Boolean((process.env.AGENT_KEY || "").trim());
+  let hasAgentKey = Boolean((process.env.AGENT_KEY || "").trim());
 
   // Si falta SERVER_BASE_URL, eso es build/config (no del usuario)
   if (!hasServerBaseUrl) {
@@ -537,11 +644,18 @@ app.whenReady().then(() => {
     return;
   }
 
-  // Si falta AgentKey, pedimos UI
+  // Si no hay AgentKey en env, intentamos tomarlo por CLI (y validar/guardar)
   if (!hasAgentKey) {
-    writeLog("⚠ AGENT_KEY faltante. Abriendo ventana de captura...");
-    openConfigWindow();
-    return;
+    const cli = await applyAgentKeyFromCliIfPresent();
+    hasAgentKey = Boolean((process.env.AGENT_KEY || "").trim());
+
+    if (cli.applied && hasAgentKey) {
+      writeLog("✅ AgentKey aplicado por CLI. Continuando sin UI...");
+    } else if (!hasAgentKey) {
+      writeLog("⚠ AGENT_KEY faltante. Abriendo ventana de captura...");
+      openConfigWindow();
+      return;
+    }
   }
 
   // Si todo está OK: arrancar schedulers + inventories
