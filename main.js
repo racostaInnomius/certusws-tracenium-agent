@@ -6,6 +6,50 @@ const cron = require("node-cron");
 const dotenv = require("dotenv");
 const os = require("os");
 
+// ✅ [PATCH] Node http/https nativo (para evitar fetch failed en macOS)
+const http = require("http");
+const https = require("https");
+
+// ✅ [PATCH] helper GET JSON vía http/https nativo
+function httpGetJson(url, headers, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    try {
+      const u = new URL(url);
+      const lib = u.protocol === "https:" ? https : http;
+
+      const req = lib.request(
+        {
+          protocol: u.protocol,
+          hostname: u.hostname,
+          port: u.port || (u.protocol === "https:" ? 443 : 80),
+          path: u.pathname + u.search,
+          method: "GET",
+          headers: headers || {},
+        },
+        (res) => {
+          let data = "";
+          res.on("data", (chunk) => (data += chunk));
+          res.on("end", () => {
+            let json = null;
+            try {
+              json = data ? JSON.parse(data) : null;
+            } catch (_) {}
+            resolve({ status: res.statusCode || 0, json, raw: data });
+          });
+        }
+      );
+
+      req.on("error", (err) => reject(err));
+      req.setTimeout(timeoutMs || 8000, () => {
+        req.destroy(new Error("timeout"));
+      });
+      req.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 // =======================
 // SINGLE INSTANCE
 // =======================
@@ -253,29 +297,25 @@ async function applyAgentKeyFromCliIfPresent() {
   try {
     writeLog(`🔎 Validando AgentKey por CLI en: ${url}`);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
+    // ✅ [PATCH] reemplazo de fetch por http/https nativo
+    const { status } = await httpGetJson(
+      url,
+      {
         [headerName]: agentKey,
         accept: "application/json",
       },
-      signal: controller.signal,
-    });
+      8000
+    );
 
-    clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
+    if (status < 200 || status >= 300) {
+      if (status === 401 || status === 403) {
         writeLog("❌ AgentKey CLI inválido o no autorizado. Se abrirá UI.");
-      } else if (res.status === 404) {
+      } else if (status === 404) {
         writeLog("❌ Endpoint de validación no existe (404). Se abrirá UI.");
       } else {
-        writeLog(`❌ Validación CLI falló (HTTP ${res.status}). Se abrirá UI.`);
+        writeLog(`❌ Validación CLI falló (HTTP ${status}). Se abrirá UI.`);
       }
-      return { applied: false, reason: `http-${res.status}` };
+      return { applied: false, reason: `http-${status}` };
     }
 
     // Guardar en userData/.env (con merge robusto)
@@ -291,11 +331,9 @@ async function applyAgentKeyFromCliIfPresent() {
 
     return { applied: true, reason: "ok" };
   } catch (err) {
-    const isAbort = String(err?.name || "").includes("Abort");
-    writeLog(
-      `❌ Error validando AgentKey por CLI: ${isAbort ? "Timeout" : (err?.message || "unknown")}. Se abrirá UI.`
-    );
-    return { applied: false, reason: isAbort ? "timeout" : "error" };
+    const msg = err?.message || "unknown";
+    writeLog(`❌ Error validando AgentKey por CLI (httpGetJson): ${msg}. Se abrirá UI.`);
+    return { applied: false, reason: msg === "timeout" ? "timeout" : "error" };
   }
 }
 
@@ -445,9 +483,10 @@ function openConfigWindow() {
   writeLog(`🧪 preload.js resolved: ${preloadPath || "(NOT FOUND)"}`);
   writeLog(`🧪 config.html resolved: ${configPath || "(NOT FOUND)"}`);
 
+  // tamaño de la ventana para agent key
   configWindow = new BrowserWindow({
-    width: 420,
-    height: 280,
+    width: 445,
+    height: 295,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -576,48 +615,44 @@ ipcMain.handle("agentConfig:validateAgentKey", async (_event, payload) => {
     if (!base) return { ok: false, error: "SERVER_BASE_URL no configurado." };
 
     // header configurable (default x-agent-key)
-    const headerName = String(process.env.AGENT_KEY_HEADER_NAME || "x-agent-key").trim() || "x-agent-key";
+    const headerName =
+      String(process.env.AGENT_KEY_HEADER_NAME || "x-agent-key").trim() || "x-agent-key";
 
     // Endpoint de validación (recomendado)
-    const validatePath = String(process.env.VALIDATE_AGENT_KEY_PATH || "/api/v1/agents/validate-agent-key").trim();
+    const validatePath =
+      String(process.env.VALIDATE_AGENT_KEY_PATH || "/api/v1/agents/validate-agent-key").trim();
 
     const url = base.replace(/\/+$/, "") + validatePath;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
+    // ✅ [PATCH] reemplazo de fetch por http/https nativo
+    const { status, json } = await httpGetJson(
+      url,
+      {
         [headerName]: agentKey,
-        "accept": "application/json",
+        accept: "application/json",
       },
-      signal: controller.signal,
-    });
+      8000
+    );
 
-    clearTimeout(timeoutId);
-
-    if (res.ok) {
-      // opcional: leer body
-      let data = null;
-      try { data = await res.json(); } catch (_) {}
-      return { ok: true, data };
+    if (status >= 200 && status < 300) {
+      return { ok: true, data: json };
     }
 
     // Si es 401/403 -> inválido
-    if (res.status === 401 || res.status === 403) {
+    if (status === 401 || status === 403) {
       return { ok: false, error: "Agent Key inválido o no autorizado." };
     }
 
     // 404 sugiere que el endpoint no existe
-    if (res.status === 404) {
+    if (status === 404) {
       return { ok: false, error: "Endpoint de validación no existe en el server (404)." };
     }
 
-    return { ok: false, error: `Validación falló (HTTP ${res.status}).` };
+    return { ok: false, error: `Validación falló (HTTP ${status}).` };
   } catch (err) {
-    const isAbort = String(err?.name || "").includes("Abort");
-    return { ok: false, error: isAbort ? "Timeout validando Agent Key." : "Error validando Agent Key." };
+    const msg = err?.message || "unknown";
+    const isTimeout = msg === "timeout";
+    return { ok: false, error: isTimeout ? "Timeout validando Agent Key." : "Error validando Agent Key." };
   }
 });
 
