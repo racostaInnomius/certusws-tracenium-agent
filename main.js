@@ -229,6 +229,39 @@ function upsertUserEnv(partial) {
   return userEnvPath;
 }
 
+function repairUserEnvIfMissingServerBaseUrl() {
+  const { userEnvPath, packagedEnvPath, devEnvPath } = getEnvPaths();
+
+  // Solo repara si se cargó desde userData/.env y falta SERVER_BASE_URL
+  if (envPath !== userEnvPath) return false;
+  if (String(process.env.SERVER_BASE_URL || "").trim()) return false;
+
+  // Tomar base: packaged si existe, si no dev
+  const basePath = fs.existsSync(packagedEnvPath) ? packagedEnvPath : devEnvPath;
+
+  const baseObj = readEnvObjectFromFile(basePath);
+  const currentUserObj = readEnvObjectFromFile(userEnvPath);
+
+  // Si base tampoco tiene SERVER_BASE_URL, no hay nada que reparar
+  if (!String(baseObj.SERVER_BASE_URL || "").trim()) return false;
+
+  // Merge: base -> user (user gana si tiene valores)
+  const merged = { ...baseObj, ...currentUserObj };
+
+  fs.writeFileSync(userEnvPath, serializeEnvFile(merged), "utf8");
+
+  // Recargar env ya reparado
+  dotenv.config({ path: userEnvPath });
+
+  writeLog(`🛠 Repaired user .env by merging from: ${basePath}`);
+  writeLog(
+    `🧪 ENV status (after repair): SERVER_BASE_URL=${process.env.SERVER_BASE_URL ? "✅" : "❌"}, AGENT_KEY=${process.env.AGENT_KEY ? "✅" : "❌"}, AGENT_ID=${process.env.AGENT_ID ? process.env.AGENT_ID : "(empty)"}`
+  );
+
+  return true;
+}
+
+
 // Cargamos env y lo reportamos
 const { envPath, result: envResult } = loadEnv();
 
@@ -240,6 +273,8 @@ if (envResult && envResult.error) {
 writeLog(
   `🧪 ENV status: SERVER_BASE_URL=${process.env.SERVER_BASE_URL ? "✅" : "❌"}, AGENT_KEY=${process.env.AGENT_KEY ? "✅" : "❌"}, AGENT_ID=${process.env.AGENT_ID ? process.env.AGENT_ID : "(empty)"}`
 );
+
+repairUserEnvIfMissingServerBaseUrl();
 
 // =======================
 // CLI ARGS (AgentKey via --agent-key)
