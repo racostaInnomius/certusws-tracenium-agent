@@ -485,8 +485,8 @@ function openConfigWindow() {
 
   // tamaño de la ventana para agent key
   configWindow = new BrowserWindow({
-    width: 445,
-    height: 295,
+    width: 485,
+    height: 345,
     resizable: false,
     minimizable: false,
     maximizable: false,
