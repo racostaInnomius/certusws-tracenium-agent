@@ -208,8 +208,13 @@ function upsertUserEnv(partial) {
 
   const { userEnvPath, packagedEnvPath, devEnvPath } = getEnvPaths();
 
-  // 1) Base env: packaged (si existe) o dev (si no)
-  const basePath = fs.existsSync(packagedEnvPath) ? packagedEnvPath : devEnvPath;
+  // ✅ [PATCH] Base env: el que REALMENTE se cargó al arranque (envPath).
+  // Si envPath apunta al userEnvPath, entonces usamos packaged (si existe) o dev como base.
+  const basePath =
+    envPath && envPath !== userEnvPath
+      ? envPath
+      : (fs.existsSync(packagedEnvPath) ? packagedEnvPath : devEnvPath);
+
   const baseObj = readEnvObjectFromFile(basePath);
 
   // 2) User env (si existe)
